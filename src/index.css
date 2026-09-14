@@ -1,0 +1,4 @@
+:root { font-family: 'DM Mono', 'Courier New', monospace; color: #d7e0e2; background: #090d0f; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button { font: inherit; }
