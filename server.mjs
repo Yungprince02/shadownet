@@ -25,6 +25,10 @@ if (db.prepare('SELECT COUNT(*) AS count FROM proposals').get().count === 0) {
   add.run('sip-04', 'Agent reputation v2', 'Route verified findings into operator reputation and staking multipliers.', 'ACTIVE', 842, 116)
   add.run('sip-03', 'Treasury safety buffer', 'Move 12% of protocol rewards into an incident response reserve.', 'PASSED', 1204, 88)
 }
+db.prepare("UPDATE findings SET kind = 'HTTP reconnaissance' WHERE kind = 'HTTP probe'").run()
+db.prepare("UPDATE findings SET kind = 'TCP connection attempt' WHERE kind = 'TCP connection'").run()
+db.prepare("UPDATE logs SET event = 'HTTP reconnaissance signal' WHERE event = 'HTTP probe signal'").run()
+db.prepare("UPDATE logs SET event = 'TCP connection attempt signal' WHERE event = 'TCP connection signal'").run()
 
 const now = () => new Date().toISOString()
 const json = (response, status, payload) => { response.statusCode = status; response.end(JSON.stringify(payload)); return true }
@@ -42,17 +46,26 @@ const recordHit = (agent, kind, path, ip, userAgent) => {
   db.prepare('INSERT INTO logs VALUES (?,?,?,?,?)').run(`log-${randomUUID()}`, agent.id, `${kind} signal`, `${ip} requested ${path}`, timestamp)
 }
 const refreshHoneypotState = () => { preyOnline = livePreyAgents().length > 0 }
+const scanLocalPort = (port) => new Promise((resolve) => {
+  const socket = net.createConnection({ host: '127.0.0.1', port })
+  const finish = (status) => { socket.destroy(); resolve({ port, status, service: ({ 80: 'HTTP', 443: 'HTTPS', 3000: 'DEV SERVER', 5173: 'VITE', 8081: 'SHADOWNET HTTP DECOY', 8082: 'SHADOWNET TCP DECOY', 8787: 'SHADOWNET API' })[port] || 'UNKNOWN' }) }
+  socket.setTimeout(700, () => finish('closed'))
+  socket.once('connect', () => finish('open'))
+  socket.once('error', () => finish('closed'))
+})
 
 const httpHoneypot = http.createServer((request, response) => {
   if (!preyOnline) { response.statusCode = 503; response.end('sandbox offline'); return }
-  const agents = livePreyAgents(); agents.forEach((agent) => recordHit(agent, 'HTTP probe', request.url || '/', request.socket.remoteAddress || 'local', request.headers['user-agent']))
+  const agents = livePreyAgents(); agents.forEach((agent) => recordHit(agent, 'HTTP reconnaissance', request.url || '/', request.socket.remoteAddress || 'local', request.headers['user-agent']))
   response.writeHead(200, { 'Content-Type': 'text/html', 'X-ShadowNet-Decoy': 'isolated' }); response.end('<!doctype html><title>ShadowNet Admin</title><h1>Admin console</h1><p>Sandbox service online.</p>')
 })
 const tcpHoneypot = net.createServer((socket) => {
+  socket.on('error', () => {})
   if (!preyOnline) { socket.end('sandbox offline\n'); return }
-  const agents = livePreyAgents(); agents.forEach((agent) => recordHit(agent, 'TCP connection', '/tcp/8082', socket.remoteAddress || 'local', 'tcp-client'))
+  const agents = livePreyAgents(); agents.forEach((agent) => recordHit(agent, 'TCP connection attempt', '/tcp/8082', socket.remoteAddress || 'local', 'tcp-client'))
   socket.end('SHADOWNET-SANDBOX/1.0\n')
 })
+refreshHoneypotState()
 if (enableHoneypots) {
   httpHoneypot.listen(8081)
   tcpHoneypot.listen(8082)
@@ -66,6 +79,13 @@ const api = async (request, response) => {
   try {
     const user = authUser(request)
     if (pathParts[1] === 'health') return json(response, 200, { ok: true, honeypots: preyOnline ? 'online' : 'offline' })
+    if (pathParts[1] === 'scan' && request.method === 'POST') {
+      const input = await bodyOf(request)
+      if (input.target && !['localhost', '127.0.0.1'].includes(input.target)) return json(response, 400, { error: 'ShadowNet scans localhost only.' })
+      const requestedPorts = Array.isArray(input.ports) ? input.ports : [80, 443, 5173, 8081, 8082, 8787]
+      const ports = [...new Set(requestedPorts.map(Number).filter((port) => Number.isInteger(port) && port > 0 && port < 65536))].slice(0, 24)
+      return json(response, 200, { target: '127.0.0.1', scannedAt: now(), results: await Promise.all(ports.map(scanLocalPort)) })
+    }
     if (pathParts[1] === 'register' && request.method === 'POST') {
       const input = await bodyOf(request); if (!input.username || !input.email || !input.password || input.password.length < 8) return json(response, 400, { error: 'Username, email and an 8 character password are required.' })
       const { salt, hash } = hashPassword(input.password); const newUser = { id: `usr-${randomUUID()}`, username: input.username.trim(), email: input.email.trim().toLowerCase(), password_hash: hash, salt, created_at: now() }
@@ -81,9 +101,29 @@ const api = async (request, response) => {
     if (pathParts[1] === 'me' && request.method === 'GET') return user ? json(response, 200, { user: publicUser(user) }) : json(response, 401, { error: 'Authentication required.' })
     if (pathParts[1] === 'public-stats') { const stats = db.prepare("SELECT COUNT(*) AS findings FROM findings").get(); return json(response, 200, { findings: stats.findings, agents: db.prepare("SELECT COUNT(*) AS count FROM agents WHERE status = 'ONLINE'").get().count, uptime: preyOnline ? '99.98%' : '100%' }) }
     if (pathParts[1] === 'marketplace') return json(response, 200, { listings: db.prepare('SELECT f.*, a.name AS agent_name FROM findings f JOIN agents a ON a.id=f.agent_id WHERE f.marketplace=1 ORDER BY f.created_at DESC LIMIT 30').all() })
+    if (pathParts[1] === 'proposals' && pathParts[2] && pathParts[3] === 'vote' && request.method === 'POST') {
+      const input = await bodyOf(request)
+      if (!['yes', 'no'].includes(input.vote)) return json(response, 400, { error: 'Vote must be yes or no.' })
+      const proposal = db.prepare('SELECT * FROM proposals WHERE id = ?').get(pathParts[2])
+      if (!proposal) return json(response, 404, { error: 'Proposal not found.' })
+      const column = input.vote === 'yes' ? 'yes' : 'no'
+      db.prepare(`UPDATE proposals SET ${column} = ${column} + 1 WHERE id = ?`).run(proposal.id)
+      return json(response, 200, { proposal: db.prepare('SELECT * FROM proposals WHERE id = ?').get(proposal.id), vote: input.vote })
+    }
+    if (pathParts[1] === 'proposals' && !pathParts[2]) return json(response, 200, { proposals: db.prepare('SELECT * FROM proposals').all() })
+    if (pathParts[1] === 'public-findings') return json(response, 200, { findings: db.prepare('SELECT f.*, a.name AS agent_name FROM findings f JOIN agents a ON a.id=f.agent_id ORDER BY f.created_at DESC LIMIT 40').all(), logs: db.prepare('SELECT l.*, a.name AS agent_name FROM logs l JOIN agents a ON a.id=l.agent_id ORDER BY l.created_at DESC LIMIT 40').all() })
+    if (pathParts[1] === 'guest-agents' && request.method === 'GET') return json(response, 200, { agents: db.prepare("SELECT * FROM agents WHERE user_id = 'public-guest' ORDER BY created_at DESC").all() })
+    if (pathParts[1] === 'guest-agents' && !pathParts[2] && request.method === 'POST') {
+      const input = await bodyOf(request); const type = ['Predator', 'Prey', 'Hybrid'].includes(input.type) ? input.type : 'Prey'; const agent = { id: `guest-${randomUUID()}`, user_id: 'public-guest', name: input.name?.trim() || `${type.toUpperCase()}-${Math.floor(Math.random() * 90 + 10)}`, type, status: 'ONLINE', created_at: now(), last_seen: now() }
+      db.prepare('INSERT INTO agents VALUES (?,?,?,?,?,?,?)').run(...Object.values(agent)); db.prepare('INSERT INTO logs VALUES (?,?,?,?,?)').run(`log-${randomUUID()}`, agent.id, 'Public agent deployed', `${agent.type} honeypot sandbox initialized`, now()); refreshHoneypotState(); return json(response, 201, { agent })
+    }
+    if (pathParts[1] === 'guest-agents' && pathParts[2] && request.method === 'POST') {
+      const agent = db.prepare("SELECT * FROM agents WHERE id = ? AND user_id = 'public-guest'").get(pathParts[2]); if (!agent) return json(response, 404, { error: 'Guest agent not found.' }); const input = await bodyOf(request)
+      if (input.action === 'delete') db.prepare('DELETE FROM agents WHERE id = ?').run(agent.id); else db.prepare('UPDATE agents SET status = ?, last_seen = ? WHERE id = ?').run(input.action === 'start' ? 'ONLINE' : 'OFFLINE', now(), agent.id); refreshHoneypotState(); return json(response, 200, { ok: true })
+    }
     if (!user) return json(response, 401, { error: 'Authentication required.' })
     if (pathParts[1] === 'agents' && request.method === 'GET') return json(response, 200, { agents: db.prepare('SELECT * FROM agents WHERE user_id = ? ORDER BY created_at DESC').all(user.id) })
-    if (pathParts[1] === 'agents' && request.method === 'POST') {
+    if (pathParts[1] === 'agents' && !pathParts[2] && request.method === 'POST') {
       const input = await bodyOf(request); const type = ['Predator', 'Prey', 'Hybrid'].includes(input.type) ? input.type : 'Prey'; const agent = { id: `agt-${randomUUID()}`, user_id: user.id, name: input.name?.trim() || `${type.toUpperCase()}-${Math.floor(Math.random() * 90 + 10)}`, type, status: 'ONLINE', created_at: now(), last_seen: now() }
       db.prepare('INSERT INTO agents VALUES (?,?,?,?,?,?,?)').run(...Object.values(agent)); db.prepare('INSERT INTO logs VALUES (?,?,?,?,?)').run(`log-${randomUUID()}`, agent.id, 'Agent deployed', `${agent.type} sandbox initialized`, now()); refreshHoneypotState(); return json(response, 201, { agent })
     }
@@ -94,7 +134,6 @@ const api = async (request, response) => {
     if (pathParts[1] === 'findings') return json(response, 200, { findings: db.prepare('SELECT f.*, a.name AS agent_name FROM findings f JOIN agents a ON a.id=f.agent_id WHERE f.user_id=? ORDER BY f.created_at DESC LIMIT 40').all(user.id), logs: db.prepare('SELECT l.*, a.name AS agent_name FROM logs l JOIN agents a ON a.id=l.agent_id WHERE a.user_id=? ORDER BY l.created_at DESC LIMIT 40').all(user.id) })
     if (pathParts[1] === 'wallet' && request.method === 'POST') { const input = await bodyOf(request); db.prepare('UPDATE users SET wallet = ? WHERE id = ?').run(input.wallet, user.id); return json(response, 200, { wallet: input.wallet }) }
     if (pathParts[1] === 'change-password' && request.method === 'POST') { const input = await bodyOf(request); if (hashPassword(input.current || '', user.salt).hash !== user.password_hash) return json(response, 400, { error: 'Current password is incorrect.' }); const next = hashPassword(input.password); db.prepare('UPDATE users SET password_hash=?, salt=? WHERE id=?').run(next.hash, next.salt, user.id); return json(response, 200, { ok: true }) }
-    if (pathParts[1] === 'proposals') return json(response, 200, { proposals: db.prepare('SELECT * FROM proposals').all() })
     return json(response, 404, { error: 'Route not found.' })
   } catch (error) { return json(response, 500, { error: error.message }) }
 }
