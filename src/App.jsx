@@ -25,8 +25,16 @@ const thenAgo = (value) => {
   return `${Math.round(seconds / 3600)}h ago`
 }
 
-const navItems = ['Dashboard', 'Agents', 'Marketplace', 'Protocol', 'Governance', 'Docs', 'Activity', 'Profile']
+const navItems = ['Dashboard', 'Prey', 'Predator', 'Marketplace', 'Knowledge', 'Activity', 'Wallet', 'Protocol']
 const wait = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds))
+const preyFields = [
+  ['name', 'Honeypot name'], ['os', 'Server / OS type'], ['hostname', 'Hostname'], ['services', 'Exposed services'],
+  ['ports', 'Open ports'], ['difficulty', 'Difficulty level'], ['tags', 'Tags'],
+]
+const predatorFields = [
+  ['name', 'Predator name'], ['scope', 'Scan scope'], ['intensity', 'Scan intensity'], ['runtime', 'Maximum runtime'],
+  ['modules', 'Authorized discovery modules'], ['logging', 'Logging level'],
+]
 
 function App() {
   const [user, setUser] = useState(null)
@@ -46,6 +54,27 @@ function App() {
   const [scanResults, setScanResults] = useState([])
   const [scanning, setScanning] = useState(false)
   const [agentAction, setAgentAction] = useState(null)
+  const [honeypots, setHoneypots] = useState([])
+  const [shadowBalance, setShadowBalance] = useState(1000)
+  const [honeypotProfile, setHoneypotProfile] = useState('Web application decoy')
+  const [predatorScan, setPredatorScan] = useState(null)
+  const [preyConfig, setPreyConfig] = useState({
+    name: 'PREY-003',
+    os: 'Ubuntu 24.04 LTS',
+    hostname: 'edge-node-03',
+    services: 'SSH, Nginx, PostgreSQL',
+    ports: '22, 80, 443, 5432',
+    difficulty: 'Intermediate',
+    tags: 'web, linux, database',
+  })
+  const [predatorConfig, setPredatorConfig] = useState({
+    name: 'PREDATOR-001',
+    scope: 'Authorized Prey only',
+    intensity: 'Balanced',
+    runtime: '30 minutes',
+    modules: 'Port discovery, Service enumeration, Configuration analysis, Known-vulnerability detection',
+    logging: 'Detailed',
+  })
 
   useEffect(() => {
     const token = localStorage.getItem('shadownet_token')
@@ -63,6 +92,8 @@ function App() {
         user ? request('findings') : request('public-findings').catch(() => ({ findings: [], logs: [] })),
         request('marketplace'),
         request('public-stats'),
+        request('honeypots').catch(() => ({ honeypots: [] })),
+        request('wallet-balance').catch(() => ({ balance: 1000 })),
       ])
 
       setAgents(data[0]?.agents || [])
@@ -70,6 +101,8 @@ function App() {
       setLogs(data[1]?.logs || [])
       setMarket(data[2]?.listings || [])
       setStats(data[3] || {})
+      setHoneypots(data[4]?.honeypots || [])
+      setShadowBalance(data[5]?.balance ?? 1000)
     } catch (error) {
       if (user) setNotice(error.message)
     }
@@ -104,7 +137,7 @@ function App() {
       setDeployState({ type: deployType, phase: 'provisioning' })
 
       if (!user) {
-        const data = await request('guest-agents', { method: 'POST', body: JSON.stringify({ type: deployType }) })
+        const data = await request('guest-agents', { method: 'POST', body: JSON.stringify({ type: deployType, profile: honeypotProfile, name: deployType === 'Prey' ? preyConfig.name : predatorConfig.name, config: deployType === 'Prey' ? preyConfig : predatorConfig }) })
         setGuestAgents((current) => [data.agent, ...current.filter((item) => item.id !== data.agent.id)])
         setDeployState({ type: deployType, phase: 'peer-sync' })
         await wait(950)
@@ -116,7 +149,7 @@ function App() {
 
       await request('agents', {
         method: 'POST',
-        body: JSON.stringify({ type: deployType }),
+        body: JSON.stringify({ type: deployType, profile: honeypotProfile, name: deployType === 'Prey' ? preyConfig.name : predatorConfig.name, config: deployType === 'Prey' ? preyConfig : predatorConfig }),
       })
 
       setDeployState({ type: deployType, phase: 'peer-sync' })
@@ -165,6 +198,30 @@ function App() {
       setNotice(error.message)
     } finally {
       setScanning(false)
+    }
+  }
+
+  const runPredatorScan = async (predatorId, honeypotId) => {
+    setPredatorScan({ predatorId, honeypotId, state: 'scanning' })
+    try {
+      const data = await request('predator-scan', { method: 'POST', body: JSON.stringify({ predatorId, honeypotId }) })
+      setPredatorScan({ predatorId, honeypotId, state: 'complete', data })
+      setNotice(`Predator scan complete: ${data.findings.length} sale-ready finding${data.findings.length === 1 ? '' : 's'}`)
+      await refresh()
+    } catch (error) {
+      setPredatorScan({ predatorId, honeypotId, state: 'error' })
+      setNotice(error.message)
+    }
+  }
+
+  const purchaseFinding = async (finding) => {
+    try {
+      const data = await request(`marketplace/${finding.id}/purchase`, { method: 'POST' })
+      setShadowBalance(data.balance)
+      setNotice(`Finding acquired for ${data.price} SHADOW`)
+      await refresh()
+    } catch (error) {
+      setNotice(error.message)
     }
   }
 
@@ -217,6 +274,7 @@ function App() {
 
           <div className="top-actions">
             <span className="live-pill"><i /> LIVE NETWORK</span>
+            <span className="shadow-balance">{shadowBalance.toLocaleString()} SHADOW</span>
             <WalletPicker user={user} wallet={guestWallet} setWallet={setGuestWallet} setNotice={setNotice} />
           </div>
         </header>
@@ -252,6 +310,17 @@ function App() {
           scanResults={scanResults}
           scanning={scanning}
           scanLocalPorts={scanLocalPorts}
+          honeypots={honeypots}
+          shadowBalance={shadowBalance}
+          honeypotProfile={honeypotProfile}
+          setHoneypotProfile={setHoneypotProfile}
+          predatorScan={predatorScan}
+          runPredatorScan={runPredatorScan}
+          purchaseFinding={purchaseFinding}
+          preyConfig={preyConfig}
+          setPreyConfig={setPreyConfig}
+          predatorConfig={predatorConfig}
+          setPredatorConfig={setPredatorConfig}
         />
       </main>
       {authMode && (
@@ -302,7 +371,7 @@ function CyberScene({ page, findings, agents, setPage }) {
     Activity: ['INGEST', 'CORRELATE', 'ALERT', 'TRACE'],
     Profile: ['KEY', 'IDENTITY', 'REPUTATION', 'TRUST'],
   }[page] || ['CORE', 'SIGNAL', 'MESH', 'LIVE']
-  const destinations = page === 'Dashboard' ? ['Dashboard', 'Agents', 'Marketplace', 'Protocol'] : ['Dashboard', 'Protocol', 'Activity', 'Profile']
+  const destinations = page === 'Dashboard' ? ['Dashboard', 'Prey', 'Marketplace', 'Protocol'] : ['Dashboard', 'Predator', 'Activity', 'Wallet']
 
   return (
     <section className={`cyber-scene scene-${sceneName}`} aria-label={`${page} visual system`}>
@@ -328,7 +397,7 @@ function CyberScene({ page, findings, agents, setPage }) {
   )
 }
 
-function DashboardPage({ page, stats, findings, agents, logs, market, user, deployType, setDeployType, deployAgent, deployState, guestWallet, setGuestWallet, setPage, changeAgentState, setNotice, scanResults, scanning, scanLocalPorts, agentAction }) {
+function DashboardPage({ page, stats, findings, agents, logs, market, user, deployType, setDeployType, deployAgent, deployState, guestWallet, setGuestWallet, setPage, changeAgentState, setNotice, scanResults, scanning, scanLocalPorts, agentAction, honeypots, shadowBalance, honeypotProfile, setHoneypotProfile, predatorScan, runPredatorScan, purchaseFinding, preyConfig, setPreyConfig, predatorConfig, setPredatorConfig }) {
   if (page === 'Dashboard') {
     return (
       <>
@@ -421,6 +490,57 @@ function DashboardPage({ page, stats, findings, agents, logs, market, user, depl
     )
   }
 
+  if (page === 'Prey') {
+    const preyAgents = agents.filter((agent) => agent.type === 'Prey' || agent.type === 'Hybrid')
+    return (
+      <>
+        <PageIntro title="Configure a Prey" kicker="ISOLATED ENVIRONMENT / 01" intro="Shape a realistic, controlled server environment before deployment. Every Prey remains isolated and available only to authorized Predators." />
+        <ConfigPanel title="Prey configuration" kicker="SERVER PROFILE" fields={preyFields} values={preyConfig} setValues={setPreyConfig} />
+        <div className="deploy-bar">
+          <div><span className="eyebrow">DEPLOYMENT</span><h3>Validate, isolate, activate</h3></div>
+          <select value={deployType} onChange={(event) => setDeployType(event.target.value)}><option>Prey</option><option>Hybrid</option></select>
+          <button type="button" className="primary" onClick={deployAgent}>DEPLOY PREY -&gt;</button>
+        </div>
+        <div className="status-banner"><span className="eyebrow">ACTIVE PREY / {preyAgents.length}</span><strong>{deployState ? `${deployState.type} / ${deployState.phase.toUpperCase()}` : 'READY / AUTHORIZED ONLY'}</strong></div>
+        <div className="prey-grid">
+          {preyAgents.length ? preyAgents.map((agent) => <PreyCard key={agent.id} agent={agent} findings={findings} />) : <EmptyState title="No Prey environments" copy="Configure a server profile above to create the first isolated target." />}
+        </div>
+      </>
+    )
+  }
+
+  if (page === 'Predator') {
+    return (
+      <>
+        <PageIntro title="Configure a Predator" kicker="AUTHORIZED SECURITY AGENT / 02" intro="Define the agent's scope, intensity, modules, and runtime before it can touch a target. Safe verification is the default." />
+        <ConfigPanel title="Predator configuration" kicker="AGENT POLICY" fields={predatorFields} values={predatorConfig} setValues={setPredatorConfig} />
+        <div className="deploy-bar"><div><span className="eyebrow">AGENT DEPLOYMENT</span><h3>Initialize autonomous analysis</h3></div><select value={deployType} onChange={(event) => setDeployType(event.target.value)}><option>Predator</option><option>Hybrid</option></select><button type="button" className="primary" onClick={deployAgent}>DEPLOY PREDATOR -&gt;</button></div>
+        <PredatorConsole agents={agents} honeypots={honeypots} scan={predatorScan} onScan={runPredatorScan} />
+      </>
+    )
+  }
+
+  if (page === 'Knowledge') {
+    const packages = [...findings, ...market].slice(0, 12)
+    return (
+      <>
+        <PageIntro title="Predator knowledge" kicker="MACHINE-READABLE DEFENSE / 04" intro="Detection packages from your verified findings, purchased intelligence, and platform research. Predators use only packages you authorize." />
+        <div className="knowledge-summary"><Stat label="AVAILABLE PACKAGES" value={packages.length || 0} delta="READY TO AUTHORIZE" /><Stat label="VERIFIED FINDINGS" value={findings.length || 0} delta="EVIDENCE LINKED" /><Stat label="SHADOW BALANCE" value={shadowBalance.toLocaleString()} delta="INTERNAL CURRENCY" /></div>
+        <div className="knowledge-grid">{packages.length ? packages.map((item, index) => <article className="knowledge-card" key={`${item.id}-${index}`}><div className="listing-head"><span className="severity" /> {item.kind || 'Service exposure'} <small>{item.cve || 'CWE-284'}</small></div><h3>{item.title || item.kind || 'Verified service exposure'}</h3><p>Detection indicators, required conditions, safe verification, and remediation guidance.</p><footer><span>{item.source || 'ShadowNet research'}</span><b>{item.sold_to ? 'PURCHASED' : 'LOCAL PACKAGE'}</b></footer></article>) : <EmptyState title="Knowledge library is empty" copy="Verified Predator findings will become reusable machine-readable packages here." />}</div>
+      </>
+    )
+  }
+
+  if (page === 'Wallet') {
+    return (
+      <>
+        <PageIntro title="SHADOW wallet" kicker="MARKETPLACE ECONOMY / 05" intro="Use SHADOW for verified finding purchases. Balances are internal marketplace credits; platform fees remain configurable at the protocol layer." />
+        <div className="wallet-overview"><div><span className="eyebrow">AVAILABLE BALANCE</span><strong>{shadowBalance.toLocaleString()} <small>SHADOW</small></strong><p>Pending balance: 0 SHADOW</p></div><WalletPicker user={user} wallet={guestWallet} setWallet={setGuestWallet} setNotice={setNotice} /></div>
+        <div className="panel wallet-ledger"><div className="panel-head"><div><span className="eyebrow">TRANSACTION HISTORY</span><h3>Recent marketplace activity</h3></div></div><div className="log-row"><time>NOW</time><span>SHADOWNET</span><strong>Wallet ready</strong><small>Finding purchases and seller earnings appear here.</small></div></div>
+      </>
+    )
+  }
+
   if (page === 'Agents') {
     return (
       <>
@@ -437,6 +557,14 @@ function DashboardPage({ page, stats, findings, agents, logs, market, user, depl
             <option>Predator</option>
             <option>Hybrid</option>
           </select>
+
+          {deployType !== 'Predator' && (
+            <select value={honeypotProfile} onChange={(event) => setHoneypotProfile(event.target.value)} aria-label="Honeypot profile">
+              <option>Web application decoy</option>
+              <option>API gateway decoy</option>
+              <option>Admin console decoy</option>
+            </select>
+          )}
 
           <button type="button" className="primary" onClick={deployAgent}>DEPLOY AGENT -&gt;</button>
         </div>
@@ -478,6 +606,7 @@ function DashboardPage({ page, stats, findings, agents, logs, market, user, depl
             <EmptyState title="No agents deployed" copy="Deploy Prey to activate the local HTTP and TCP honeypots." button="DEPLOY PREY -&gt;" onClick={deployAgent} />
           )}
         </div>
+        <PredatorConsole agents={agents} honeypots={honeypots} scan={predatorScan} onScan={runPredatorScan} />
       </>
     )
   }
@@ -499,7 +628,7 @@ function DashboardPage({ page, stats, findings, agents, logs, market, user, depl
                 <p>{item.ip} · {item.user_agent}</p>
                 <footer>
                   <span>{item.agent_name}</span>
-                  <b>VERIFIED SIGNAL</b>
+                  {item.sold_to ? <b>ACQUIRED</b> : <button type="button" className="buy-button" onClick={() => purchaseFinding(item)}>{item.price || 25} SHADOW / BUY</button>}
                 </footer>
               </article>
             ))
@@ -514,7 +643,7 @@ function DashboardPage({ page, stats, findings, agents, logs, market, user, depl
   if (page === 'Protocol') {
     return (
       <>
-        <PageIntro title="The protocol" kicker="ARCHITECTURE / 01" intro="Click the model nodes to move through the defense layer." />
+        <PageIntro title="The protocol" kicker="ARCHITECTURE / 01" intro="Authorized sandbox intelligence only." />
         <div className="info-grid">
           <InfoCard title="Predator" copy="Hunts for vulnerability patterns inside approved targets and produces evidence for review." />
           <InfoCard title="Prey" copy="Runs a decoy HTTP and TCP surface. It attracts real connection attempts without exposing funds or production systems." />
@@ -753,6 +882,32 @@ function PageIntro({ title, kicker, intro }) {
   )
 }
 
+function ConfigPanel({ title, kicker, fields, values, setValues }) {
+  return (
+    <section className="config-panel">
+      <div className="panel-head"><div><span className="eyebrow">{kicker}</span><h3>{title}</h3></div><span className="scope-badge">AUTHORIZED SCOPE</span></div>
+      <div className="config-fields">
+        {fields.map(([key, label]) => (
+          <label className="config-field" key={key}>{label}<input value={values[key] || ''} onChange={(event) => setValues((current) => ({ ...current, [key]: event.target.value }))} /></label>
+        ))}
+      </div>
+      <div className="config-foot"><span>CONFIGURATION VALIDATION</span><strong><i /> READY TO PROVISION</strong></div>
+    </section>
+  )
+}
+
+function PreyCard({ agent, findings }) {
+  const config = typeof agent.config === 'string' ? (() => { try { return JSON.parse(agent.config) } catch { return {} } })() : (agent.config || {})
+  return (
+    <article className="prey-card">
+      <div className="card-head"><span className="agent-icon">P</span><span className="status"><i /> {agent.status}</span></div>
+      <h3>{agent.name}</h3><p>{config.os || config.profile || 'Configured isolated server'} / {config.hostname || 'shadow-endpoint'}</p>
+      <div className="prey-facts"><span><b>SERVICES</b>{config.services || 'SSH, HTTP'}</span><span><b>OPEN PORTS</b>{config.ports || '8081, 8082'}</span><span><b>FINDINGS</b>{findings.filter((item) => item.agent_id === agent.id).length}</span><span><b>DEPLOYED</b>{thenAgo(agent.created_at)}</span></div>
+      <div className="prey-lock">ISOLATED TARGET / AUTHORIZED PREDATORS ONLY</div>
+    </article>
+  )
+}
+
 function InfoCard({ title, copy }) {
   return (
     <article className="info-card">
@@ -830,6 +985,39 @@ function FindingRow({ item }) {
       </div>
       <time>{thenAgo(item.created_at)}</time>
     </div>
+  )
+}
+
+function PredatorConsole({ agents, honeypots, scan, onScan }) {
+  const predators = agents.filter((agent) => agent.type === 'Predator' && agent.status === 'ONLINE')
+  const [predatorId, setPredatorId] = useState('')
+  const [honeypotId, setHoneypotId] = useState('')
+
+  useEffect(() => {
+    if (!predatorId && predators[0]) setPredatorId(predators[0].id)
+    if (!honeypotId && honeypots[0]) setHoneypotId(honeypots[0].id)
+  }, [predators, honeypots, predatorId, honeypotId])
+
+  return (
+    <section className="predator-console">
+      <div className="scanner-head">
+        <div>
+          <span className="eyebrow">AUTHORIZED TARGET LINK</span>
+          <h3>Predator mission control</h3>
+        </div>
+        <span className="scope-badge">SHADOW SCOPE ONLY</span>
+      </div>
+      <div className="mission-grid">
+        <label>Predator agent<select value={predatorId} onChange={(event) => setPredatorId(event.target.value)}><option value="">Select Predator</option>{predators.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></label>
+        <label>Honeypot target<select value={honeypotId} onChange={(event) => setHoneypotId(event.target.value)}><option value="">Select honeypot</option>{honeypots.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} / {agent.config?.profile || 'decoy'}</option>)}</select></label>
+        <button type="button" className="primary" disabled={!predatorId || !honeypotId || scan?.state === 'scanning'} onClick={() => onScan(predatorId, honeypotId)}>{scan?.state === 'scanning' ? 'SCANNING TARGET...' : 'RUN SAFE SCAN -&gt;'}</button>
+      </div>
+      <div className="mission-evidence">
+        <span className="scope-lock">LOCKED SCOPE</span>
+        <span>Ports / services / configuration signals</span>
+        <span>{scan?.state === 'complete' ? `${scan.data.findings.length} findings published` : 'No mission run yet'}</span>
+      </div>
+    </section>
   )
 }
 

@@ -318,6 +318,7 @@ h1, h2, h3, p { margin: 0; }
 .topbar { display: flex; justify-content: space-between; align-items: center; padding: 28px 0 22px; border-bottom: 1px solid var(--line); }
 .topbar h1 { margin-top: 8px; font: 600 24px 'Space Grotesk', sans-serif; }
 .top-actions { display: flex; align-items: center; gap: 18px; }
+.shadow-balance { color: var(--lime); font: 9px 'DM Mono', monospace; letter-spacing: 0.8px; }
 .live-pill { display: inline-flex; align-items: center; color: var(--lime); font: 9px 'DM Mono', monospace; text-transform: uppercase; }
 .live-pill i { width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 12px var(--lime); animation: beaconPulse 1s ease-in-out infinite; }
 .wallet-button { display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px solid var(--line); background: rgba(16, 24, 25, 0.9); color: var(--text); font: 10px 'DM Mono', monospace; }
@@ -532,6 +533,7 @@ h1, h2, h3, p { margin: 0; }
 .deploy-bar { display: flex; align-items: center; gap: 16px; margin: 8px 0 18px; padding: 18px 20px; background: rgba(11, 18, 19, 0.8); border: 1px solid var(--line); }
 .deploy-bar h3 { margin-top: 8px; font-size: 20px; }
 .deploy-bar select { flex: 1; max-width: 220px; padding: 12px 14px; background: rgba(8, 14, 15, 0.9); border: 1px solid var(--line); color: var(--text); outline: none; }
+.deploy-bar select + select { max-width: 250px; }
 .status-banner { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; padding: 14px 18px; border: 1px solid var(--line); background: rgba(11, 18, 18, 0.8); }
 .status-banner strong { color: var(--cyan); font: 11px 'DM Mono', monospace; }
 .agent-grid, .listing-grid, .info-grid, .proposal-list, .feed-list { display: grid; gap: 16px; }
@@ -594,6 +596,17 @@ h1, h2, h3, p { margin: 0; }
 .listing-card h3 { margin-top: 18px; font-size: 22px; }
 .listing-card footer { display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font: 9px 'DM Mono', monospace; }
 .listing-card footer b { color: var(--cyan); }
+.buy-button { border: 1px solid rgba(199, 255, 111, 0.4); background: rgba(199, 255, 111, 0.08); color: var(--lime); padding: 7px 9px; font: 9px 'DM Mono', monospace; }
+.buy-button:hover { background: rgba(199, 255, 111, 0.18); box-shadow: 0 0 12px rgba(199, 255, 111, 0.18); }
+.predator-console { margin-top: 18px; border: 1px solid rgba(255, 178, 103, 0.3); background: rgba(19, 17, 14, 0.78); }
+.scope-badge { color: var(--orange); font: 9px 'DM Mono', monospace; border: 1px solid rgba(255, 178, 103, 0.35); padding: 7px 9px; }
+.mission-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; padding: 18px 20px; }
+.mission-grid label { color: var(--muted); font: 9px 'DM Mono', monospace; }
+.mission-grid select { display: block; width: 100%; margin-top: 7px; padding: 11px 12px; border: 1px solid var(--line); background: rgba(7, 14, 15, 0.9); color: var(--text); }
+.mission-grid .primary { align-self: end; white-space: nowrap; }
+.mission-grid .primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.mission-evidence { display: flex; gap: 18px; padding: 12px 20px; border-top: 1px solid var(--line); color: var(--muted); font: 9px 'DM Mono', monospace; }
+.scope-lock { color: var(--orange); }
 .proposal-card { display: flex; justify-content: space-between; gap: 16px; }
 .vote-box { min-width: 160px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .vote-box strong { font: 600 28px 'Space Grotesk', sans-serif; }
@@ -618,6 +631,31 @@ h1, h2, h3, p { margin: 0; }
 .empty-state span { color: var(--cyan); font-size: 30px; }
 .empty-state h3 { font-size: 22px; color: var(--text); }
 .empty-state p { font: 11px 'DM Mono', monospace; line-height: 1.8; max-width: 420px; }
+.config-panel { margin-bottom: 18px; border: 1px solid rgba(116, 243, 236, 0.28); background: rgba(11, 18, 19, 0.86); }
+.config-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; padding: 20px; }
+.config-field { color: var(--muted); font: 9px 'DM Mono', monospace; text-transform: uppercase; }
+.config-field input { display: block; width: 100%; margin-top: 8px; padding: 12px; border: 1px solid var(--line); outline: none; background: rgba(7, 14, 15, 0.92); color: var(--text); font: 11px 'DM Mono', monospace; }
+.config-field input:focus { border-color: var(--cyan); box-shadow: 0 0 0 2px rgba(116, 243, 236, 0.1); }
+.config-foot { display: flex; justify-content: space-between; padding: 12px 20px; border-top: 1px solid var(--line); color: var(--muted); font: 9px 'DM Mono', monospace; }
+.config-foot strong { color: var(--lime); font-weight: 400; }
+.config-foot i { display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 8px var(--lime); }
+.prey-grid, .knowledge-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.prey-card, .knowledge-card, .wallet-overview { border: 1px solid var(--line); background: rgba(11, 18, 19, 0.82); padding: 18px; }
+.prey-card h3, .knowledge-card h3 { margin-top: 18px; font-size: 24px; }
+.prey-card p, .knowledge-card p { margin-top: 8px; color: var(--muted); font: 11px 'DM Mono', monospace; line-height: 1.8; }
+.prey-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.prey-facts span { color: var(--text); font: 10px 'DM Mono', monospace; line-height: 1.6; }
+.prey-facts b { display: block; color: var(--muted); font-size: 8px; font-weight: 400; }
+.prey-lock { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--cyan); font: 8px 'DM Mono', monospace; letter-spacing: 0.8px; }
+.knowledge-summary { display: grid; grid-template-columns: repeat(3, 1fr); margin-bottom: 18px; border: 1px solid var(--line); }
+.knowledge-summary .stat-card { border-bottom: none; }
+.knowledge-card footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font: 9px 'DM Mono', monospace; }
+.knowledge-card footer b { color: var(--lime); font-weight: 400; }
+.wallet-overview { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+.wallet-overview strong { display: block; margin-top: 10px; color: var(--lime); font: 600 40px 'Space Grotesk', sans-serif; }
+.wallet-overview strong small { color: var(--cyan); font: 10px 'DM Mono', monospace; }
+.wallet-overview p { margin-top: 7px; color: var(--muted); font: 10px 'DM Mono', monospace; }
+.wallet-ledger { min-height: 170px; }
 .log-panel { margin-top: 18px; }
 .log-row { display: grid; grid-template-columns: 98px 160px minmax(0, 1fr) minmax(0, 1.2fr); gap: 14px; padding: 15px 22px; border-bottom: 1px solid var(--line); color: var(--muted); font: 10px 'DM Mono', monospace; }
 .log-row:last-child { border-bottom: none; }
@@ -668,7 +706,7 @@ h1, h2, h3, p { margin: 0; }
   .nav { grid-template-columns: repeat(4, minmax(140px, 1fr)); overflow-x: auto; }
   .main-panel { padding: 0 18px 32px; }
   .hero { grid-template-columns: 1fr; padding-top: 60px; }
-  .feature-grid, .section-grid, .agent-grid, .listing-grid, .info-grid, .top-grid { grid-template-columns: 1fr; }
+  .feature-grid, .section-grid, .agent-grid, .listing-grid, .info-grid, .top-grid, .prey-grid, .knowledge-grid { grid-template-columns: 1fr; }
   .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .auth-screen { display: block; }
   .auth-visual { min-height: auto; padding: 28px 28px 18px; }
@@ -693,10 +731,16 @@ h1, h2, h3, p { margin: 0; }
   .log-row { grid-template-columns: 1fr 1fr; }
   .log-row strong, .log-row small { grid-column: 1 / -1; }
   .deploy-bar, .proposal-card, .profile-box { flex-direction: column; align-items: flex-start; }
+  .mission-grid { grid-template-columns: 1fr; }
+  .config-fields, .knowledge-summary { grid-template-columns: 1fr 1fr; }
+  .mission-grid .primary { width: 100%; }
+  .mission-evidence { flex-wrap: wrap; gap: 8px; }
   .agent-actions { flex-wrap: wrap; }
   .activity-row { grid-template-columns: 1fr; }
   .agent-runtime { grid-template-columns: 38px minmax(0, 1fr); }
   .runtime-label { grid-column: 2; text-align: left; }
   .scanner-head { align-items: flex-start; flex-direction: column; }
   .scanner-head .primary { width: 100%; }
+  .config-fields, .knowledge-summary { grid-template-columns: 1fr; }
+  .config-foot, .wallet-overview { align-items: flex-start; flex-direction: column; }
 }

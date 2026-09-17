@@ -19,7 +19,13 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS findings (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, user_id TEXT NOT NULL, kind TEXT NOT NULL, path TEXT NOT NULL, ip TEXT NOT NULL, user_agent TEXT, created_at TEXT NOT NULL, marketplace INTEGER DEFAULT 1);
   CREATE TABLE IF NOT EXISTS logs (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, event TEXT NOT NULL, detail TEXT NOT NULL, created_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS proposals (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL, yes INTEGER DEFAULT 0, no INTEGER DEFAULT 0);
+  CREATE TABLE IF NOT EXISTS shadow_balances (user_id TEXT PRIMARY KEY, balance INTEGER NOT NULL DEFAULT 0);
+  CREATE TABLE IF NOT EXISTS purchases (id TEXT PRIMARY KEY, finding_id TEXT NOT NULL UNIQUE, buyer_id TEXT NOT NULL, price INTEGER NOT NULL, purchased_at TEXT NOT NULL);
 `)
+try { db.exec("ALTER TABLE agents ADD COLUMN config TEXT NOT NULL DEFAULT '{}'") } catch {}
+try { db.exec("ALTER TABLE findings ADD COLUMN price INTEGER NOT NULL DEFAULT 25") } catch {}
+try { db.exec("ALTER TABLE findings ADD COLUMN sold_to TEXT") } catch {}
+db.prepare('INSERT OR IGNORE INTO shadow_balances (user_id, balance) VALUES (?, ?)').run('public-guest', 1000)
 if (db.prepare('SELECT COUNT(*) AS count FROM proposals').get().count === 0) {
   const add = db.prepare('INSERT INTO proposals (id,title,description,status,yes,no) VALUES (?,?,?,?,?,?)')
   add.run('sip-04', 'Agent reputation v2', 'Route verified findings into operator reputation and staking multipliers.', 'ACTIVE', 842, 116)
@@ -37,12 +43,15 @@ const publicUser = (user) => ({ id: user.id, username: user.username, email: use
 const tokenFor = (userId) => { const token = randomBytes(32).toString('hex'); db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(token, userId, Date.now() + 1000 * 60 * 60 * 24 * 14); return token }
 const authUser = (request) => { const token = request.headers.authorization?.replace('Bearer ', ''); if (!token) return null; const session = db.prepare('SELECT user_id FROM sessions WHERE token = ? AND expires_at > ?').get(token, Date.now()); return session ? db.prepare('SELECT * FROM users WHERE id = ?').get(session.user_id) : null }
 const bodyOf = async (request) => { let raw = ''; for await (const chunk of request) raw += chunk; return raw ? JSON.parse(raw) : {} }
+const ownerId = (user) => user?.id || 'public-guest'
+const balanceFor = (userId) => db.prepare('SELECT balance FROM shadow_balances WHERE user_id = ?').get(userId)?.balance || 0
+const ensureBalance = (userId) => db.prepare('INSERT OR IGNORE INTO shadow_balances (user_id, balance) VALUES (?, 1000)').run(userId)
 
 let preyOnline = false
 const livePreyAgents = () => db.prepare("SELECT * FROM agents WHERE type IN ('Prey','Hybrid') AND status = 'ONLINE'").all()
 const recordHit = (agent, kind, path, ip, userAgent) => {
   const timestamp = now(); const findingId = `hit-${randomUUID()}`
-  db.prepare('INSERT INTO findings VALUES (?,?,?,?,?,?,?,?,?)').run(findingId, agent.id, agent.user_id, kind, path, ip, userAgent || 'unknown', timestamp, 1)
+  db.prepare('INSERT INTO findings (id,agent_id,user_id,kind,path,ip,user_agent,created_at,marketplace,price,sold_to) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(findingId, agent.id, agent.user_id, kind, path, ip, userAgent || 'unknown', timestamp, 1, 25, null)
   db.prepare('INSERT INTO logs VALUES (?,?,?,?,?)').run(`log-${randomUUID()}`, agent.id, `${kind} signal`, `${ip} requested ${path}`, timestamp)
 }
 const refreshHoneypotState = () => { preyOnline = livePreyAgents().length > 0 }
@@ -53,6 +62,12 @@ const scanLocalPort = (port) => new Promise((resolve) => {
   socket.once('connect', () => finish('open'))
   socket.once('error', () => finish('closed'))
 })
+const configFor = (agent) => { try { return JSON.parse(agent.config || '{}') } catch { return {} } }
+const safeHoneypotPorts = (agent) => {
+  const configuredPorts = configFor(agent).ports || [8081, 8082]
+  const ports = Array.isArray(configuredPorts) ? configuredPorts : String(configuredPorts).split(',')
+  return [...new Set(ports.map(Number).filter((port) => [8081, 8082].includes(port)))]
+}
 
 const httpHoneypot = http.createServer((request, response) => {
   if (!preyOnline) { response.statusCode = 503; response.end('sandbox offline'); return }
@@ -79,6 +94,10 @@ const api = async (request, response) => {
   try {
     const user = authUser(request)
     if (pathParts[1] === 'health') return json(response, 200, { ok: true, honeypots: preyOnline ? 'online' : 'offline' })
+    if (pathParts[1] === 'wallet-balance') {
+      const id = ownerId(user); ensureBalance(id)
+      return json(response, 200, { currency: 'SHADOW', balance: balanceFor(id) })
+    }
     if (pathParts[1] === 'scan' && request.method === 'POST') {
       const input = await bodyOf(request)
       if (input.target && !['localhost', '127.0.0.1'].includes(input.target)) return json(response, 400, { error: 'ShadowNet scans localhost only.' })
@@ -100,6 +119,22 @@ const api = async (request, response) => {
     if (pathParts[1] === 'logout' && request.method === 'POST') { const token = request.headers.authorization?.replace('Bearer ', ''); if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(token); return json(response, 200, { ok: true }) }
     if (pathParts[1] === 'me' && request.method === 'GET') return user ? json(response, 200, { user: publicUser(user) }) : json(response, 401, { error: 'Authentication required.' })
     if (pathParts[1] === 'public-stats') { const stats = db.prepare("SELECT COUNT(*) AS findings FROM findings").get(); return json(response, 200, { findings: stats.findings, agents: db.prepare("SELECT COUNT(*) AS count FROM agents WHERE status = 'ONLINE'").get().count, uptime: preyOnline ? '99.98%' : '100%' }) }
+    if (pathParts[1] === 'marketplace' && pathParts[2] && pathParts[3] === 'purchase' && request.method === 'POST') {
+      const buyerId = ownerId(user); ensureBalance(buyerId)
+      const finding = db.prepare('SELECT * FROM findings WHERE id = ? AND marketplace = 1').get(pathParts[2])
+      if (!finding) return json(response, 404, { error: 'Finding not found.' })
+      if (finding.sold_to) return json(response, 409, { error: 'Finding already purchased.' })
+      if (finding.user_id === buyerId) return json(response, 400, { error: 'You cannot purchase your own finding.' })
+      if (balanceFor(buyerId) < finding.price) return json(response, 402, { error: 'Insufficient SHADOW balance.' })
+      db.exec('BEGIN')
+      try {
+        db.prepare('UPDATE shadow_balances SET balance = balance - ? WHERE user_id = ?').run(finding.price, buyerId)
+        db.prepare('INSERT INTO purchases VALUES (?,?,?,?,?)').run(`buy-${randomUUID()}`, finding.id, buyerId, finding.price, now())
+        db.prepare('UPDATE findings SET sold_to = ? WHERE id = ?').run(buyerId, finding.id)
+        db.exec('COMMIT')
+      } catch (error) { db.exec('ROLLBACK'); throw error }
+      return json(response, 200, { ok: true, currency: 'SHADOW', price: finding.price, balance: balanceFor(buyerId), finding })
+    }
     if (pathParts[1] === 'marketplace') return json(response, 200, { listings: db.prepare('SELECT f.*, a.name AS agent_name FROM findings f JOIN agents a ON a.id=f.agent_id WHERE f.marketplace=1 ORDER BY f.created_at DESC LIMIT 30').all() })
     if (pathParts[1] === 'proposals' && pathParts[2] && pathParts[3] === 'vote' && request.method === 'POST') {
       const input = await bodyOf(request)
@@ -112,20 +147,30 @@ const api = async (request, response) => {
     }
     if (pathParts[1] === 'proposals' && !pathParts[2]) return json(response, 200, { proposals: db.prepare('SELECT * FROM proposals').all() })
     if (pathParts[1] === 'public-findings') return json(response, 200, { findings: db.prepare('SELECT f.*, a.name AS agent_name FROM findings f JOIN agents a ON a.id=f.agent_id ORDER BY f.created_at DESC LIMIT 40').all(), logs: db.prepare('SELECT l.*, a.name AS agent_name FROM logs l JOIN agents a ON a.id=l.agent_id ORDER BY l.created_at DESC LIMIT 40').all() })
+    if (pathParts[1] === 'honeypots' && request.method === 'GET') return json(response, 200, { honeypots: db.prepare("SELECT * FROM agents WHERE type IN ('Prey','Hybrid') AND status = 'ONLINE' ORDER BY created_at DESC").all().map((agent) => ({ ...agent, config: configFor(agent), scoped: true })) })
     if (pathParts[1] === 'guest-agents' && request.method === 'GET') return json(response, 200, { agents: db.prepare("SELECT * FROM agents WHERE user_id = 'public-guest' ORDER BY created_at DESC").all() })
     if (pathParts[1] === 'guest-agents' && !pathParts[2] && request.method === 'POST') {
-      const input = await bodyOf(request); const type = ['Predator', 'Prey', 'Hybrid'].includes(input.type) ? input.type : 'Prey'; const agent = { id: `guest-${randomUUID()}`, user_id: 'public-guest', name: input.name?.trim() || `${type.toUpperCase()}-${Math.floor(Math.random() * 90 + 10)}`, type, status: 'ONLINE', created_at: now(), last_seen: now() }
-      db.prepare('INSERT INTO agents VALUES (?,?,?,?,?,?,?)').run(...Object.values(agent)); db.prepare('INSERT INTO logs VALUES (?,?,?,?,?)').run(`log-${randomUUID()}`, agent.id, 'Public agent deployed', `${agent.type} honeypot sandbox initialized`, now()); refreshHoneypotState(); return json(response, 201, { agent })
+      const input = await bodyOf(request); const type = ['Predator', 'Prey', 'Hybrid'].includes(input.type) ? input.type : 'Prey'; const config = { ...(input.config && typeof input.config === 'object' ? input.config : {}), ...(type === 'Predator' ? { scope: 'Authorized Prey only' } : { ports: input.config?.ports || [8081, 8082], profile: input.profile || input.config?.profile || 'ShadowNet decoy', target: '127.0.0.1' }) }; const agent = { id: `guest-${randomUUID()}`, user_id: 'public-guest', name: input.name?.trim() || `${type.toUpperCase()}-${Math.floor(Math.random() * 90 + 10)}`, type, status: 'ONLINE', created_at: now(), last_seen: now(), config: JSON.stringify(config) }
+      db.prepare('INSERT INTO agents (id,user_id,name,type,status,created_at,last_seen,config) VALUES (?,?,?,?,?,?,?,?)').run(...Object.values(agent)); ensureBalance('public-guest'); db.prepare('INSERT INTO logs VALUES (?,?,?,?,?)').run(`log-${randomUUID()}`, agent.id, 'Public agent deployed', `${agent.type} ${type === 'Prey' || type === 'Hybrid' ? 'honeypot' : 'autonomous scanner'} initialized`, now()); refreshHoneypotState(); return json(response, 201, { agent: { ...agent, config } })
     }
     if (pathParts[1] === 'guest-agents' && pathParts[2] && request.method === 'POST') {
       const agent = db.prepare("SELECT * FROM agents WHERE id = ? AND user_id = 'public-guest'").get(pathParts[2]); if (!agent) return json(response, 404, { error: 'Guest agent not found.' }); const input = await bodyOf(request)
       if (input.action === 'delete') db.prepare('DELETE FROM agents WHERE id = ?').run(agent.id); else db.prepare('UPDATE agents SET status = ?, last_seen = ? WHERE id = ?').run(input.action === 'start' ? 'ONLINE' : 'OFFLINE', now(), agent.id); refreshHoneypotState(); return json(response, 200, { ok: true })
     }
+    if (pathParts[1] === 'predator-scan' && request.method === 'POST') {
+      const input = await bodyOf(request); const scanner = db.prepare("SELECT * FROM agents WHERE id = ? AND type = 'Predator' AND user_id = ?").get(input.predatorId, ownerId(user)); const target = db.prepare("SELECT * FROM agents WHERE id = ? AND type IN ('Prey','Hybrid') AND status = 'ONLINE' AND (user_id = ? OR user_id = 'public-guest')").get(input.honeypotId, ownerId(user))
+      if (!scanner) return json(response, 404, { error: 'Predator agent not found in this operator scope.' })
+      if (!target) return json(response, 404, { error: 'Select an online ShadowNet honeypot.' })
+      const ports = safeHoneypotPorts(target); const results = await Promise.all(ports.map(scanLocalPort)); const open = results.filter((item) => item.status === 'open')
+      const findings = open.map((item) => { const findingId = `pred-${randomUUID()}`; const timestamp = now(); const price = item.port === 8081 ? 75 : 60; db.prepare('INSERT INTO findings (id,agent_id,user_id,kind,path,ip,user_agent,created_at,marketplace,price) VALUES (?,?,?,?,?,?,?,?,?,?)').run(findingId, scanner.id, ownerId(user), 'Service exposure', `port:${item.port}`, '127.0.0.1', item.service, timestamp, 1, price); return { id: findingId, kind: 'Service exposure', path: `port:${item.port}`, service: item.service, price } })
+      db.prepare('INSERT INTO logs VALUES (?,?,?,?,?)').run(`log-${randomUUID()}`, scanner.id, 'Predator scan complete', `${open.length} exposed services found on ${target.name}`, now())
+      return json(response, 200, { safeScope: 'ShadowNet honeypot only', target: { id: target.id, name: target.name }, results, findings })
+    }
     if (!user) return json(response, 401, { error: 'Authentication required.' })
     if (pathParts[1] === 'agents' && request.method === 'GET') return json(response, 200, { agents: db.prepare('SELECT * FROM agents WHERE user_id = ? ORDER BY created_at DESC').all(user.id) })
     if (pathParts[1] === 'agents' && !pathParts[2] && request.method === 'POST') {
-      const input = await bodyOf(request); const type = ['Predator', 'Prey', 'Hybrid'].includes(input.type) ? input.type : 'Prey'; const agent = { id: `agt-${randomUUID()}`, user_id: user.id, name: input.name?.trim() || `${type.toUpperCase()}-${Math.floor(Math.random() * 90 + 10)}`, type, status: 'ONLINE', created_at: now(), last_seen: now() }
-      db.prepare('INSERT INTO agents VALUES (?,?,?,?,?,?,?)').run(...Object.values(agent)); db.prepare('INSERT INTO logs VALUES (?,?,?,?,?)').run(`log-${randomUUID()}`, agent.id, 'Agent deployed', `${agent.type} sandbox initialized`, now()); refreshHoneypotState(); return json(response, 201, { agent })
+      const input = await bodyOf(request); const type = ['Predator', 'Prey', 'Hybrid'].includes(input.type) ? input.type : 'Prey'; const config = { ...(input.config && typeof input.config === 'object' ? input.config : {}), ...(type === 'Predator' ? { scope: 'Authorized Prey only' } : { ports: input.config?.ports || [8081, 8082], profile: input.profile || input.config?.profile || 'ShadowNet decoy', target: '127.0.0.1' }) }; const agent = { id: `agt-${randomUUID()}`, user_id: user.id, name: input.name?.trim() || `${type.toUpperCase()}-${Math.floor(Math.random() * 90 + 10)}`, type, status: 'ONLINE', created_at: now(), last_seen: now(), config: JSON.stringify(config) }
+      db.prepare('INSERT INTO agents (id,user_id,name,type,status,created_at,last_seen,config) VALUES (?,?,?,?,?,?,?,?)').run(...Object.values(agent)); ensureBalance(user.id); db.prepare('INSERT INTO logs VALUES (?,?,?,?,?)').run(`log-${randomUUID()}`, agent.id, 'Agent deployed', `${agent.type} ${type === 'Prey' || type === 'Hybrid' ? 'honeypot' : 'autonomous scanner'} initialized`, now()); refreshHoneypotState(); return json(response, 201, { agent: { ...agent, config } })
     }
     if (pathParts[1] === 'agents' && pathParts[2] && request.method === 'POST') {
       const agent = db.prepare('SELECT * FROM agents WHERE id = ? AND user_id = ?').get(pathParts[2], user.id); if (!agent) return json(response, 404, { error: 'Agent not found.' }); const input = await bodyOf(request)
