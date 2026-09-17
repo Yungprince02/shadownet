@@ -1069,12 +1069,13 @@ function WalletPicker({ user, wallet, setWallet, setNotice }) {
   const [open, setOpen] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [addressInput, setAddressInput] = useState('')
+  const [providerId, setProviderId] = useState(localStorage.getItem('shadownet_wallet_provider') || '')
   const currentWallet = user?.wallet || wallet
   const wallets = [
-    { id: 'metamask', name: 'MetaMask', mark: 'M', color: '#f6851b' },
-    { id: 'coinbase', name: 'Coinbase Wallet', mark: 'C', color: '#4d73f8' },
-    { id: 'phantom', name: 'Phantom', mark: 'P', color: '#ab9cff' },
-    { id: 'walletconnect', name: 'WalletConnect', mark: 'W', color: '#5d8bff' },
+    { id: 'metamask', name: 'MetaMask', icon: 'metamask', mark: 'M', color: '#f6851b' },
+    { id: 'coinbase', name: 'Coinbase Wallet', icon: 'coinbase', mark: 'C', color: '#4d73f8' },
+    { id: 'phantom', name: 'Phantom', icon: 'phantom', mark: 'P', color: '#ab9cff' },
+    { id: 'walletconnect', name: 'WalletConnect', icon: 'walletconnect', mark: 'W', color: '#5d8bff' },
   ]
 
   const connect = async (selected) => {
@@ -1092,6 +1093,8 @@ function WalletPicker({ user, wallet, setWallet, setNotice }) {
 
       setWallet(address)
       localStorage.setItem('shadownet_guest_wallet', address)
+      localStorage.setItem('shadownet_wallet_provider', selected.id)
+      setProviderId(selected.id)
       if (user) await request('wallet', { method: 'POST', body: JSON.stringify({ wallet: address }) })
       setNotice(`${selected.name} connected`)
       setAddressInput('')
@@ -1106,8 +1109,8 @@ function WalletPicker({ user, wallet, setWallet, setNotice }) {
   return (
     <div className="wallet-picker">
       <button type="button" className="wallet-button" onClick={() => setOpen((current) => !current)}>
-        <span className="wallet-mark" style={{ background: currentWallet ? 'var(--lime)' : 'var(--cyan)' }}>{currentWallet ? '✓' : '+'}</span>
-        {currentWallet ? `${currentWallet.slice(0, 6)}...${currentWallet.slice(-4)}` : 'CONNECT WALLET'} <b>-&gt;</b>
+        {currentWallet ? <img className="wallet-mark wallet-provider-logo" src={`https://cdn.simpleicons.org/${providerId || 'ethereum'}`} alt="" /> : <span className="wallet-mark">+</span>}
+        {currentWallet ? <span><b className="wallet-connected-label">CONNECTED</b>{`${currentWallet.slice(0, 6)}...${currentWallet.slice(-4)}`}</span> : 'ADD WALLET'} <b>-&gt;</b>
       </button>
       {open && (
         <div className="wallet-menu">
@@ -1115,14 +1118,16 @@ function WalletPicker({ user, wallet, setWallet, setNotice }) {
             <span className="eyebrow">SELECT PROVIDER</span>
             <button type="button" onClick={() => setOpen(false)}>x</button>
           </div>
+          {currentWallet && <div className="wallet-confirmed"><span className="status"><i /> WALLET INPUTTED</span><strong>{currentWallet.slice(0, 10)}...{currentWallet.slice(-8)}</strong></div>}
           {wallets.map((item) => (
-            <button type="button" className="wallet-option" key={item.id} onClick={() => connect(item)} disabled={connecting}>
-              <span className="provider-mark" style={{ background: item.color }}>{item.mark}</span>
+            <button type="button" className={`wallet-option${providerId === item.id ? ' selected' : ''}`} key={item.id} onClick={() => connect(item)} disabled={connecting}>
+              <span className="provider-mark" style={{ background: item.color }}><img src={`https://cdn.simpleicons.org/${item.icon}`} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; event.currentTarget.parentElement.textContent = item.mark }} /></span>
               <span><strong>{item.name}</strong><small>{item.id === 'walletconnect' ? 'QR connection' : 'Browser extension'}</small></span>
-              <b>-&gt;</b>
+              <b>{providerId === item.id ? 'LINKED' : '-&gt;'}</b>
             </button>
           ))}
-          <label className="wallet-address-field">WALLET ADDRESS<input value={addressInput} onChange={(event) => setAddressInput(event.target.value)} placeholder="0x... or Solana address" /></label>
+          <label className="wallet-address-field">WALLET ADDRESS<input value={addressInput} onChange={(event) => setAddressInput(event.target.value)} placeholder={currentWallet || '0x... or Solana address'} /></label>
+          <small className="wallet-input-note">Paste your address, then select its provider above to link it.</small>
           <small className="wallet-note">No custody. No seed phrases stored.</small>
         </div>
       )}
