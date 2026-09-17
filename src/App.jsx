@@ -58,6 +58,7 @@ function App() {
   const [shadowBalance, setShadowBalance] = useState(1000)
   const [honeypotProfile, setHoneypotProfile] = useState('Web application decoy')
   const [predatorScan, setPredatorScan] = useState(null)
+  const [pageLoading, setPageLoading] = useState(false)
   const [preyConfig, setPreyConfig] = useState({
     name: 'PREY-003',
     os: 'Ubuntu 24.04 LTS',
@@ -127,6 +128,15 @@ function App() {
     localStorage.removeItem('shadownet_token')
     setUser(null)
     setNotice('Live operator session active')
+  }
+
+  const navigateTo = (nextPage) => {
+    if (nextPage === page) return
+    setPageLoading(true)
+    window.setTimeout(() => {
+      setPage(nextPage)
+      setPageLoading(false)
+    }, 420)
   }
 
   const deployAgent = async () => {
@@ -244,7 +254,7 @@ function App() {
               key={item}
               type="button"
               className={page === item ? 'nav-item active' : 'nav-item'}
-              onClick={() => setPage(item)}
+              onClick={() => navigateTo(item)}
             >
               <span className="nav-glyph">{item[0]}</span>
               {item}
@@ -287,7 +297,9 @@ function App() {
         )}
 
         <LiveTelemetry pulse={telemetryPulse} findings={findings} logs={logs} agents={agents} stats={stats} />
-        <CyberScene page={page} findings={findings} agents={agents} setPage={setPage} />
+        <CyberScene page={page} findings={findings} agents={agents} setPage={navigateTo} />
+
+        {pageLoading && <div className="page-sync"><span className="sync-spinner" /><span>SYNCING PROTOCOL STATE</span></div>}
 
         <DashboardPage
           page={page}
@@ -852,7 +864,7 @@ function Field({ label, type = 'text', value, onChange, placeholder }) {
 }
 
 function Brand() {
-  return <div className="brand"><span className="brand-symbol">S</span> SHADOWNET</div>
+  return <div className="brand"><img src="/shadownet-logo.svg" alt="ShadowNet" /> <span>SHADOWNET</span></div>
 }
 
 function Panel({ title, kicker, action, onAction, children, className = '' }) {
@@ -1056,6 +1068,7 @@ function PortScanner({ results, scanning, onScan }) {
 function WalletPicker({ user, wallet, setWallet, setNotice }) {
   const [open, setOpen] = useState(false)
   const [connecting, setConnecting] = useState(false)
+  const [addressInput, setAddressInput] = useState('')
   const currentWallet = user?.wallet || wallet
   const wallets = [
     { id: 'metamask', name: 'MetaMask', mark: 'M', color: '#f6851b' },
@@ -1073,14 +1086,15 @@ function WalletPicker({ user, wallet, setWallet, setNotice }) {
         address = accounts[0] || ''
       }
 
-      if (!address) {
-        address = `${selected.id}-${Math.random().toString(16).slice(2, 10)}`
-      }
+      if (!address) address = addressInput.trim()
+      if (!address) throw new Error('Enter your wallet address or install the provider extension.')
+      if (!/^0x[a-fA-F0-9]{40}$/.test(address) && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) throw new Error('Enter a valid Ethereum or Solana wallet address.')
 
       setWallet(address)
       localStorage.setItem('shadownet_guest_wallet', address)
       if (user) await request('wallet', { method: 'POST', body: JSON.stringify({ wallet: address }) })
       setNotice(`${selected.name} connected`)
+      setAddressInput('')
       setOpen(false)
     } catch (error) {
       setNotice(error.message || 'Wallet connection was cancelled')
@@ -1108,6 +1122,7 @@ function WalletPicker({ user, wallet, setWallet, setNotice }) {
               <b>-&gt;</b>
             </button>
           ))}
+          <label className="wallet-address-field">WALLET ADDRESS<input value={addressInput} onChange={(event) => setAddressInput(event.target.value)} placeholder="0x... or Solana address" /></label>
           <small className="wallet-note">No custody. No seed phrases stored.</small>
         </div>
       )}

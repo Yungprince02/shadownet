@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 768 768">
+  <defs>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#69bd83"/><stop offset="1" stop-color="#173c31"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="12" dy="16" stdDeviation="7" flood-color="#061313" flood-opacity=".75"/></filter>
+  </defs>
+  <circle cx="384" cy="384" r="384" fill="#071c1d"/>
+  <rect x="197" y="143" width="374" height="374" rx="65" fill="url(#green)" stroke="#f3fff8" stroke-width="13"/>
+  <rect x="218" y="164" width="332" height="332" rx="52" fill="none" stroke="#d6f4dd" stroke-width="8" opacity=".9"/>
+  <g fill="#fff" stroke="#0b2727" stroke-width="8" filter="url(#shadow)">
+    <path d="M365 196h38v118l84-84 27 27-84 84h118v38H430l84 84-27 27-84-84v118h-38V379l-84 84-27-27 84-84H220v-38h118l-84-84 27-27 84 84z"/>
+  </g>
+  <text x="384" y="604" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="59" font-weight="700" letter-spacing="2">SHADOWNET</text>
+  <text x="384" y="647" text-anchor="middle" fill="#78bd8b" font-family="Arial,sans-serif" font-size="22" font-weight="700" letter-spacing="2">GLOBAL NETWORK SOLUTIONS</text>
+</svg>
