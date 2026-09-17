@@ -126,7 +126,7 @@ function App() {
 
     localStorage.removeItem('shadownet_token')
     setUser(null)
-    setNotice('You are browsing as a guest operator')
+    setNotice('Live operator session active')
   }
 
   const deployAgent = async () => {
@@ -233,8 +233,8 @@ function App() {
         <div className="user-chip">
           <div className="avatar">{user ? user.username[0].toUpperCase() : 'G'}</div>
           <div>
-            <strong>{user ? user.username : 'Guest operator'}</strong>
-            <small>{user ? 'OPERATOR / TIER 01' : 'PUBLIC ACCESS / DEMO MODE'}</small>
+            <strong>{user ? user.username : 'Open operator'}</strong>
+            <small>{user ? 'OPERATOR / TIER 01' : 'PUBLIC OPERATOR / LIVE ACCESS'}</small>
           </div>
         </div>
 
@@ -544,7 +544,7 @@ function DashboardPage({ page, stats, findings, agents, logs, market, user, depl
   if (page === 'Agents') {
     return (
       <>
-        <PageIntro title="Agent fleet" kicker="OPERATIONAL UNITS / 02" intro="Deploy isolated security agents. Prey is the live honeypot mode; Predator and Hybrid are ready for future approved research workflows." />
+        <PageIntro title="Agent fleet" kicker="OPERATIONAL UNITS / 02" intro="Deploy isolated security agents. Prey provides the controlled environment; Predator and Hybrid run approved research workflows." />
 
         <div className="deploy-bar">
           <div>
@@ -748,7 +748,7 @@ function AuthScreen({ mode, onMode, onSuccess, onClose }) {
         <button type="button" className="auth-close" onClick={onClose}>x CLOSE</button>
         <span className="eyebrow">OPERATOR ACCESS / 01</span>
         <h2>{mode === 'login' ? 'Welcome back' : 'Create your operator key'}</h2>
-        <p className="form-copy">{mode === 'login' ? 'Resume your security operation.' : 'Start with a sandboxed account. No funds required.'}</p>
+        <p className="form-copy">{mode === 'login' ? 'Resume your security operation.' : 'Create a sandboxed operator account and start provisioning.'}</p>
 
         {mode === 'signup' && (
           <>
@@ -1128,8 +1128,8 @@ function ProfileCard({ user, wallet, setWallet, setNotice }) {
         <div className="profile-avatar">{user ? user.username[0].toUpperCase() : 'G'}</div>
         <div>
           <span className="eyebrow">OPERATOR ID</span>
-          <h2>{user ? user.username : 'Guest operator'}</h2>
-          <p>{user ? user.email : 'Public access / local demo mode'}</p>
+          <h2>{user ? user.username : 'Open operator'}</h2>
+          <p>{user ? user.email : 'Public access / live operator mode'}</p>
         </div>
         <button type="button" className="outline" onClick={handleWallet}>{user?.wallet || wallet ? 'WALLET LINKED' : 'CONNECT WALLET'}</button>
       </div>
@@ -1171,7 +1171,7 @@ function GovernancePanel({ setNotice }) {
 
   return (
     <>
-      <PageIntro title="Governance" kicker="COLLECTIVE DEFENSE / 07" intro="Operators steer the protocol. Votes shown here are a transparent MVP surface for future on-chain governance." />
+      <PageIntro title="Governance" kicker="COLLECTIVE DEFENSE / 07" intro="Operators steer the protocol through transparent proposals and recorded votes." />
 
       <div className="proposal-list">
         {proposals.map((proposal) => {
