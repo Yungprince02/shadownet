@@ -1070,8 +1070,11 @@ function PortScanner({ results, scanning, onScan }) {
 function WalletPicker({ user, wallet, setWallet, setNotice }) {
   const [open, setOpen] = useState(false)
   const [connecting, setConnecting] = useState(false)
-  const [addressInput, setAddressInput] = useState('')
-  const [providerId, setProviderId] = useState(localStorage.getItem('shadownet_wallet_provider') || '')
+  const storedDetails = (() => { try { return JSON.parse(localStorage.getItem('shadownet_wallet_details') || '{}') } catch { return {} } })()
+  const [addressInput, setAddressInput] = useState(user?.walletDetails?.address || storedDetails.address || '')
+  const [networkInput, setNetworkInput] = useState(user?.walletDetails?.network || storedDetails.network || 'Ethereum Mainnet')
+  const [labelInput, setLabelInput] = useState(user?.walletDetails?.label || storedDetails.label || '')
+  const [providerId, setProviderId] = useState(user?.walletDetails?.provider || storedDetails.provider || localStorage.getItem('shadownet_wallet_provider') || '')
   const currentWallet = user?.wallet || wallet
   const wallets = [
     { id: 'metamask', name: 'MetaMask', icon: 'metamask', mark: 'M', color: '#f6851b' },
@@ -1096,10 +1099,11 @@ function WalletPicker({ user, wallet, setWallet, setNotice }) {
       setWallet(address)
       localStorage.setItem('shadownet_guest_wallet', address)
       localStorage.setItem('shadownet_wallet_provider', selected.id)
+      const details = { address, provider: selected.id, network: networkInput.trim() || 'Ethereum Mainnet', label: labelInput.trim() }
+      localStorage.setItem('shadownet_wallet_details', JSON.stringify(details))
       setProviderId(selected.id)
-      if (user) await request('wallet', { method: 'POST', body: JSON.stringify({ wallet: address }) })
-      setNotice(`${selected.name} connected`)
-      setAddressInput('')
+      if (user) await request('wallet', { method: 'POST', body: JSON.stringify(details) })
+      setNotice(`${selected.name} wallet details saved`)
       setOpen(false)
     } catch (error) {
       setNotice(error.message || 'Wallet connection was cancelled')
@@ -1120,7 +1124,7 @@ function WalletPicker({ user, wallet, setWallet, setNotice }) {
             <span className="eyebrow">SELECT PROVIDER</span>
             <button type="button" onClick={() => setOpen(false)}>x</button>
           </div>
-          {currentWallet && <div className="wallet-confirmed"><span className="status"><i /> WALLET INPUTTED</span><strong>{currentWallet.slice(0, 10)}...{currentWallet.slice(-8)}</strong></div>}
+          {currentWallet && <div className="wallet-confirmed"><span className="status"><i /> WALLET DETAILS SAVED</span><strong>{currentWallet.slice(0, 10)}...{currentWallet.slice(-8)}</strong><small>{networkInput} {labelInput ? `· ${labelInput}` : ''}</small></div>}
           {wallets.map((item) => (
             <button type="button" className={`wallet-option${providerId === item.id ? ' selected' : ''}`} key={item.id} onClick={() => connect(item)} disabled={connecting}>
               <span className="provider-mark" style={{ background: item.color }}><img src={`https://cdn.simpleicons.org/${item.icon}`} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; event.currentTarget.parentElement.textContent = item.mark }} /></span>
@@ -1129,6 +1133,8 @@ function WalletPicker({ user, wallet, setWallet, setNotice }) {
             </button>
           ))}
           <label className="wallet-address-field">WALLET ADDRESS<input value={addressInput} onChange={(event) => setAddressInput(event.target.value)} placeholder={currentWallet || '0x... or Solana address'} /></label>
+          <label className="wallet-address-field">NETWORK<input value={networkInput} onChange={(event) => setNetworkInput(event.target.value)} placeholder="Ethereum Mainnet" /></label>
+          <label className="wallet-address-field">WALLET LABEL<input value={labelInput} onChange={(event) => setLabelInput(event.target.value)} placeholder="Treasury wallet" /></label>
           <small className="wallet-input-note">Paste your address, then select its provider above to link it.</small>
           <small className="wallet-note">No custody. No seed phrases stored.</small>
         </div>

@@ -23,6 +23,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS purchases (id TEXT PRIMARY KEY, finding_id TEXT NOT NULL UNIQUE, buyer_id TEXT NOT NULL, price INTEGER NOT NULL, purchased_at TEXT NOT NULL);
 `)
 try { db.exec("ALTER TABLE agents ADD COLUMN config TEXT NOT NULL DEFAULT '{}'") } catch {}
+try { db.exec("ALTER TABLE users ADD COLUMN wallet_details TEXT NOT NULL DEFAULT '{}'") } catch {}
 try { db.exec("ALTER TABLE findings ADD COLUMN price INTEGER NOT NULL DEFAULT 25") } catch {}
 try { db.exec("ALTER TABLE findings ADD COLUMN sold_to TEXT") } catch {}
 try { db.exec("ALTER TABLE findings ADD COLUMN asset_type TEXT NOT NULL DEFAULT 'FINDING_NFT'") } catch {}
@@ -45,7 +46,7 @@ db.prepare("UPDATE logs SET event = 'TCP connection attempt signal' WHERE event 
 const now = () => new Date().toISOString()
 const json = (response, status, payload) => { response.statusCode = status; response.end(JSON.stringify(payload)); return true }
 const hashPassword = (password, salt = randomBytes(16).toString('hex')) => ({ salt, hash: pbkdf2Sync(password, salt, 120000, 64, 'sha256').toString('hex') })
-const publicUser = (user) => ({ id: user.id, username: user.username, email: user.email, wallet: user.wallet, createdAt: user.created_at })
+const publicUser = (user) => ({ id: user.id, username: user.username, email: user.email, wallet: user.wallet, walletDetails: (() => { try { return JSON.parse(user.wallet_details || '{}') } catch { return {} } })(), createdAt: user.created_at })
 const tokenFor = (userId) => { const token = randomBytes(32).toString('hex'); db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(token, userId, Date.now() + 1000 * 60 * 60 * 24 * 14); return token }
 const authUser = (request) => { const token = request.headers.authorization?.replace('Bearer ', ''); if (!token) return null; const session = db.prepare('SELECT user_id FROM sessions WHERE token = ? AND expires_at > ?').get(token, Date.now()); return session ? db.prepare('SELECT * FROM users WHERE id = ?').get(session.user_id) : null }
 const bodyOf = async (request) => { let raw = ''; for await (const chunk of request) raw += chunk; return raw ? JSON.parse(raw) : {} }
@@ -190,7 +191,7 @@ const api = async (request, response) => {
       if (input.action === 'delete') db.prepare('DELETE FROM agents WHERE id = ?').run(agent.id); else db.prepare('UPDATE agents SET status = ?, last_seen = ? WHERE id = ?').run(input.action === 'start' ? 'ONLINE' : 'OFFLINE', now(), agent.id); refreshHoneypotState(); return json(response, 200, { ok: true })
     }
     if (pathParts[1] === 'findings') return json(response, 200, { findings: db.prepare('SELECT f.*, a.name AS agent_name FROM findings f JOIN agents a ON a.id=f.agent_id WHERE f.user_id=? ORDER BY f.created_at DESC LIMIT 40').all(user.id), logs: db.prepare('SELECT l.*, a.name AS agent_name FROM logs l JOIN agents a ON a.id=l.agent_id WHERE a.user_id=? ORDER BY l.created_at DESC LIMIT 40').all(user.id) })
-    if (pathParts[1] === 'wallet' && request.method === 'POST') { const input = await bodyOf(request); db.prepare('UPDATE users SET wallet = ? WHERE id = ?').run(input.wallet, user.id); return json(response, 200, { wallet: input.wallet }) }
+    if (pathParts[1] === 'wallet' && request.method === 'POST') { const input = await bodyOf(request); const details = { address: String(input.address || input.wallet || '').trim(), provider: String(input.provider || '').trim(), network: String(input.network || '').trim(), label: String(input.label || '').trim(), updatedAt: now() }; if (!details.address) return json(response, 400, { error: 'Wallet address is required.' }); db.prepare('UPDATE users SET wallet = ?, wallet_details = ? WHERE id = ?').run(details.address, JSON.stringify(details), user.id); return json(response, 200, { wallet: details.address, walletDetails: details }) }
     if (pathParts[1] === 'change-password' && request.method === 'POST') { const input = await bodyOf(request); if (hashPassword(input.current || '', user.salt).hash !== user.password_hash) return json(response, 400, { error: 'Current password is incorrect.' }); const next = hashPassword(input.password); db.prepare('UPDATE users SET password_hash=?, salt=? WHERE id=?').run(next.hash, next.salt, user.id); return json(response, 200, { ok: true }) }
     return json(response, 404, { error: 'Route not found.' })
   } catch (error) { return json(response, 500, { error: error.message }) }
