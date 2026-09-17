@@ -1075,6 +1075,7 @@ function WalletPicker({ user, wallet, setWallet, setNotice }) {
   const [networkInput, setNetworkInput] = useState(user?.walletDetails?.network || storedDetails.network || 'Ethereum Mainnet')
   const [labelInput, setLabelInput] = useState(user?.walletDetails?.label || storedDetails.label || '')
   const [providerId, setProviderId] = useState(user?.walletDetails?.provider || storedDetails.provider || localStorage.getItem('shadownet_wallet_provider') || '')
+  const [walletStep, setWalletStep] = useState('provider')
   const currentWallet = user?.wallet || wallet
   const wallets = [
     { id: 'metamask', name: 'MetaMask', icon: 'metamask', mark: 'M', color: '#f6851b' },
@@ -1112,30 +1113,47 @@ function WalletPicker({ user, wallet, setWallet, setNotice }) {
     }
   }
 
+  const selectProvider = (selected) => {
+    setProviderId(selected.id)
+    setWalletStep('details')
+  }
+
+  const selectedProvider = wallets.find((item) => item.id === providerId)
+
   return (
     <div className="wallet-picker">
-      <button type="button" className="wallet-button" onClick={() => setOpen((current) => !current)}>
+      <button type="button" className="wallet-button" onClick={() => { setOpen((current) => !current); if (!open) setWalletStep('provider') }}>
         {currentWallet ? <img className="wallet-mark wallet-provider-logo" src={`https://cdn.simpleicons.org/${providerId || 'ethereum'}`} alt="" /> : <span className="wallet-mark">+</span>}
         {currentWallet ? <span><b className="wallet-connected-label">CONNECTED</b>{`${currentWallet.slice(0, 6)}...${currentWallet.slice(-4)}`}</span> : 'ADD WALLET'} <b>-&gt;</b>
       </button>
       {open && (
         <div className="wallet-menu">
           <div className="wallet-menu-head">
-            <span className="eyebrow">SELECT PROVIDER</span>
+            <span className="eyebrow">{walletStep === 'provider' ? 'SELECT PROVIDER' : 'WALLET DETAILS'}</span>
             <button type="button" onClick={() => setOpen(false)}>x</button>
           </div>
           {currentWallet && <div className="wallet-confirmed"><span className="status"><i /> WALLET DETAILS SAVED</span><strong>{currentWallet.slice(0, 10)}...{currentWallet.slice(-8)}</strong><small>{networkInput} {labelInput ? `· ${labelInput}` : ''}</small></div>}
-          {wallets.map((item) => (
-            <button type="button" className={`wallet-option${providerId === item.id ? ' selected' : ''}`} key={item.id} onClick={() => connect(item)} disabled={connecting}>
-              <span className="provider-mark" style={{ background: item.color }}><img src={`https://cdn.simpleicons.org/${item.icon}`} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; event.currentTarget.parentElement.textContent = item.mark }} /></span>
-              <span><strong>{item.name}</strong><small>{item.id === 'walletconnect' ? 'QR connection' : 'Browser extension'}</small></span>
-              <b>{providerId === item.id ? 'LINKED' : '-&gt;'}</b>
-            </button>
-          ))}
-          <label className="wallet-address-field">WALLET ADDRESS<input value={addressInput} onChange={(event) => setAddressInput(event.target.value)} placeholder={currentWallet || '0x... or Solana address'} /></label>
-          <label className="wallet-address-field">NETWORK<input value={networkInput} onChange={(event) => setNetworkInput(event.target.value)} placeholder="Ethereum Mainnet" /></label>
-          <label className="wallet-address-field">WALLET LABEL<input value={labelInput} onChange={(event) => setLabelInput(event.target.value)} placeholder="Treasury wallet" /></label>
-          <small className="wallet-input-note">Paste your address, then select its provider above to link it.</small>
+          {walletStep === 'provider' ? (
+            <>
+              {wallets.map((item) => (
+                <button type="button" className={`wallet-option${providerId === item.id ? ' selected' : ''}`} key={item.id} onClick={() => selectProvider(item)} disabled={connecting}>
+                  <span className="provider-mark" style={{ background: item.color }}><img src={`https://cdn.simpleicons.org/${item.icon}`} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; event.currentTarget.parentElement.textContent = item.mark }} /></span>
+                  <span><strong>{item.name}</strong><small>{item.id === 'walletconnect' ? 'QR connection' : 'Browser extension'}</small></span>
+                  <b>-&gt;</b>
+                </button>
+              ))}
+              <small className="wallet-input-note">Step 1 of 2 / choose the wallet provider.</small>
+            </>
+          ) : (
+            <>
+              <div className="wallet-selected-provider"><img src={`https://cdn.simpleicons.org/${selectedProvider?.icon || 'ethereum'}`} alt="" /><span><small>SELECTED PROVIDER</small><strong>{selectedProvider?.name}</strong></span><button type="button" onClick={() => setWalletStep('provider')}>CHANGE</button></div>
+              <label className="wallet-address-field">WALLET ADDRESS<input value={addressInput} onChange={(event) => setAddressInput(event.target.value)} placeholder={currentWallet || '0x... or Solana address'} /></label>
+              <label className="wallet-address-field">NETWORK<input value={networkInput} onChange={(event) => setNetworkInput(event.target.value)} placeholder="Ethereum Mainnet" /></label>
+              <label className="wallet-address-field">WALLET LABEL<input value={labelInput} onChange={(event) => setLabelInput(event.target.value)} placeholder="Treasury wallet" /></label>
+              <button type="button" className="primary wallet-confirm-button" onClick={() => connect(selectedProvider)} disabled={connecting || !selectedProvider}>{connecting ? 'SAVING WALLET...' : 'CONFIRM & SAVE WALLET -&gt;'}</button>
+              <small className="wallet-input-note">Step 2 of 2 / details are saved only after confirmation.</small>
+            </>
+          )}
           <small className="wallet-note">No custody. No seed phrases stored.</small>
         </div>
       )}
