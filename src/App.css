@@ -387,6 +387,14 @@ h1, h2, h3, p { margin: 0; }
 .wallet-confirmed { display: grid; gap: 6px; margin: 10px 7px 4px; padding: 10px; border: 1px solid rgba(199, 255, 111, .3); background: rgba(199, 255, 111, .06); }
 .wallet-confirmed strong { color: var(--text); font: 9px 'DM Mono', monospace; }
 .wallet-input-note { display: block; padding: 7px 7px 2px; color: var(--muted); font: 8px 'DM Mono', monospace; line-height: 1.5; }
+.wallet-selected-provider { display: flex; align-items: center; gap: 9px; margin: 12px 7px 4px; padding: 9px; border: 1px solid rgba(116, 243, 236, .25); background: rgba(116, 243, 236, .06); }
+.wallet-selected-provider img { width: 22px; height: 22px; padding: 3px; border-radius: 50%; background: var(--text); }
+.wallet-selected-provider span { flex: 1; }
+.wallet-selected-provider small, .wallet-selected-provider strong { display: block; font: 8px 'DM Mono', monospace; }
+.wallet-selected-provider small { color: var(--muted); }
+.wallet-selected-provider strong { margin-top: 4px; color: var(--text); font-size: 10px; }
+.wallet-selected-provider button { border: none; background: transparent; color: var(--cyan); font: 8px 'DM Mono', monospace; }
+.wallet-confirm-button { width: calc(100% - 14px); margin: 12px 7px 0; padding: 11px 8px; font-size: 8px; }
 .page-sync { position: fixed; z-index: 40; right: 28px; bottom: 24px; display: inline-flex; align-items: center; gap: 10px; padding: 11px 14px; border: 1px solid rgba(116, 243, 236, .45); background: rgba(7, 17, 18, .94); color: var(--cyan); box-shadow: var(--shadow); font: 9px 'DM Mono', monospace; letter-spacing: .8px; animation: syncIn .2s ease-out; }
 .sync-spinner { width: 12px; height: 12px; border: 2px solid rgba(116, 243, 236, .25); border-top-color: var(--lime); border-radius: 50%; animation: orbitSpin .7s linear infinite; }
 .notice-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; padding: 12px 16px; border: 1px solid rgba(116, 243, 236, 0.32); background: rgba(15, 31, 31, 0.9); color: var(--text); font: 11px 'DM Mono', monospace; }
