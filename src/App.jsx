@@ -633,11 +633,13 @@ function DashboardPage({ page, stats, findings, agents, logs, market, user, depl
               <article className="listing-card" key={item.id}>
                 <div className="listing-head">
                   <span className="severity" />
-                  {item.kind}
+                  <span>{item.kind}</span>
+                  <b className="nft-badge">NFT / VERIFIED</b>
                   <small>{thenAgo(item.created_at)}</small>
                 </div>
                 <h3>{item.path}</h3>
                 <p>{item.ip} · {item.user_agent}</p>
+                <div className="nft-meta"><span>TOKEN <b>{item.token_id || 'MINTING'}</b></span><span>CHAIN <b>{item.chain || 'SHADOWNET'}</b></span></div>
                 <footer>
                   <span>{item.agent_name}</span>
                   {item.sold_to ? <b>ACQUIRED</b> : <button type="button" className="buy-button" onClick={() => purchaseFinding(item)}>{item.price || 25} SHADOW / BUY</button>}

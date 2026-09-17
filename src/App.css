@@ -606,8 +606,11 @@ h1, h2, h3, p { margin: 0; }
 .status.offline, .status.stopped { color: var(--muted); }
 .status.active { color: var(--lime); }
 .listing-head { color: var(--muted); font: 10px 'DM Mono', monospace; }
+.listing-head .nft-badge { margin-left: auto; color: var(--lime); font: 8px 'DM Mono', monospace; letter-spacing: .6px; }
 .severity { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 10px rgba(255, 109, 112, 0.7); }
 .listing-card h3 { margin-top: 18px; font-size: 22px; }
+.nft-meta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; color: var(--muted); font: 8px 'DM Mono', monospace; }
+.nft-meta b { margin-left: 4px; color: var(--cyan); font-weight: 400; }
 .listing-card footer { display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font: 9px 'DM Mono', monospace; }
 .listing-card footer b { color: var(--cyan); }
 .buy-button { border: 1px solid rgba(199, 255, 111, 0.4); background: rgba(199, 255, 111, 0.08); color: var(--lime); padding: 7px 9px; font: 9px 'DM Mono', monospace; }

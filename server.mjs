@@ -25,6 +25,12 @@ db.exec(`
 try { db.exec("ALTER TABLE agents ADD COLUMN config TEXT NOT NULL DEFAULT '{}'") } catch {}
 try { db.exec("ALTER TABLE findings ADD COLUMN price INTEGER NOT NULL DEFAULT 25") } catch {}
 try { db.exec("ALTER TABLE findings ADD COLUMN sold_to TEXT") } catch {}
+try { db.exec("ALTER TABLE findings ADD COLUMN asset_type TEXT NOT NULL DEFAULT 'FINDING_NFT'") } catch {}
+try { db.exec("ALTER TABLE findings ADD COLUMN token_id TEXT") } catch {}
+try { db.exec("ALTER TABLE findings ADD COLUMN chain TEXT NOT NULL DEFAULT 'SHADOWNET'" ) } catch {}
+try { db.exec("ALTER TABLE findings ADD COLUMN verification_status TEXT NOT NULL DEFAULT 'VERIFIED'") } catch {}
+try { db.exec("ALTER TABLE findings ADD COLUMN knowledge_package TEXT NOT NULL DEFAULT 'AVAILABLE'") } catch {}
+db.prepare("UPDATE findings SET token_id = 'SNFT-' || substr(replace(id, '-', ''), 1, 12) WHERE token_id IS NULL").run()
 db.prepare('INSERT OR IGNORE INTO shadow_balances (user_id, balance) VALUES (?, ?)').run('public-guest', 1000)
 if (db.prepare('SELECT COUNT(*) AS count FROM proposals').get().count === 0) {
   const add = db.prepare('INSERT INTO proposals (id,title,description,status,yes,no) VALUES (?,?,?,?,?,?)')
@@ -46,12 +52,18 @@ const bodyOf = async (request) => { let raw = ''; for await (const chunk of requ
 const ownerId = (user) => user?.id || 'public-guest'
 const balanceFor = (userId) => db.prepare('SELECT balance FROM shadow_balances WHERE user_id = ?').get(userId)?.balance || 0
 const ensureBalance = (userId) => db.prepare('INSERT OR IGNORE INTO shadow_balances (user_id, balance) VALUES (?, 1000)').run(userId)
+const mintFindingAsset = (findingId) => {
+  const tokenId = `SNFT-${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`
+  db.prepare("UPDATE findings SET asset_type = 'FINDING_NFT', token_id = ?, chain = 'SHADOWNET', verification_status = 'VERIFIED', knowledge_package = 'AVAILABLE' WHERE id = ?").run(tokenId, findingId)
+  return tokenId
+}
 
 let preyOnline = false
 const livePreyAgents = () => db.prepare("SELECT * FROM agents WHERE type IN ('Prey','Hybrid') AND status = 'ONLINE'").all()
 const recordHit = (agent, kind, path, ip, userAgent) => {
   const timestamp = now(); const findingId = `hit-${randomUUID()}`
   db.prepare('INSERT INTO findings (id,agent_id,user_id,kind,path,ip,user_agent,created_at,marketplace,price,sold_to) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(findingId, agent.id, agent.user_id, kind, path, ip, userAgent || 'unknown', timestamp, 1, 25, null)
+  mintFindingAsset(findingId)
   db.prepare('INSERT INTO logs VALUES (?,?,?,?,?)').run(`log-${randomUUID()}`, agent.id, `${kind} signal`, `${ip} requested ${path}`, timestamp)
 }
 const refreshHoneypotState = () => { preyOnline = livePreyAgents().length > 0 }
@@ -66,7 +78,8 @@ const configFor = (agent) => { try { return JSON.parse(agent.config || '{}') } c
 const safeHoneypotPorts = (agent) => {
   const configuredPorts = configFor(agent).ports || [8081, 8082]
   const ports = Array.isArray(configuredPorts) ? configuredPorts : String(configuredPorts).split(',')
-  return [...new Set(ports.map(Number).filter((port) => [8081, 8082].includes(port)))]
+  const safePorts = [...new Set(ports.map(Number).filter((port) => [8081, 8082].includes(port)))]
+  return safePorts.length ? safePorts : [8081, 8082]
 }
 
 const httpHoneypot = http.createServer((request, response) => {
@@ -162,7 +175,7 @@ const api = async (request, response) => {
       if (!scanner) return json(response, 404, { error: 'Predator agent not found in this operator scope.' })
       if (!target) return json(response, 404, { error: 'Select an online ShadowNet honeypot.' })
       const ports = safeHoneypotPorts(target); const results = await Promise.all(ports.map(scanLocalPort)); const open = results.filter((item) => item.status === 'open')
-      const findings = open.map((item) => { const findingId = `pred-${randomUUID()}`; const timestamp = now(); const price = item.port === 8081 ? 75 : 60; db.prepare('INSERT INTO findings (id,agent_id,user_id,kind,path,ip,user_agent,created_at,marketplace,price) VALUES (?,?,?,?,?,?,?,?,?,?)').run(findingId, scanner.id, ownerId(user), 'Service exposure', `port:${item.port}`, '127.0.0.1', item.service, timestamp, 1, price); return { id: findingId, kind: 'Service exposure', path: `port:${item.port}`, service: item.service, price } })
+      const findings = open.map((item) => { const findingId = `pred-${randomUUID()}`; const timestamp = now(); const price = item.port === 8081 ? 75 : 60; db.prepare('INSERT INTO findings (id,agent_id,user_id,kind,path,ip,user_agent,created_at,marketplace,price) VALUES (?,?,?,?,?,?,?,?,?,?)').run(findingId, scanner.id, ownerId(user), 'Service exposure', `port:${item.port}`, '127.0.0.1', item.service, timestamp, 1, price); const tokenId = mintFindingAsset(findingId); return { id: findingId, kind: 'Service exposure', path: `port:${item.port}`, service: item.service, price, assetType: 'FINDING_NFT', tokenId, chain: 'SHADOWNET' } })
       db.prepare('INSERT INTO logs VALUES (?,?,?,?,?)').run(`log-${randomUUID()}`, scanner.id, 'Predator scan complete', `${open.length} exposed services found on ${target.name}`, now())
       return json(response, 200, { safeScope: 'ShadowNet honeypot only', target: { id: target.id, name: target.name }, results, findings })
     }
